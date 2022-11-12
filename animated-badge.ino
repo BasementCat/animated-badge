@@ -188,6 +188,62 @@ typedef struct __attribute__ ((packed)) {
 // #define QOIF2_TRAILER b'\x00\x00\x00\x00\x00\x00\x00\x01'
 #define READ_BUF_SZ 25000
 
+
+class fbuf {
+public:
+    uint8_t buf[READ_BUF_SZ];
+    int head = 0, tail = 0, size = 0;
+    File *fp;
+    long reset_pos = 0;
+
+    fbuf(File *fp) {
+        this->fp = fp;
+        this->reset_pos = this->fp->position();
+        this->fill();
+    }
+
+    void fill() {
+        int max_read, read_b;
+        while (this->size < READ_BUF_SZ) {
+            if (this->tail <= this->head) {
+                // read to end of buffer
+                max_read = min(READ_BUF_SZ - this->size, READ_BUF_SZ - this->head);
+                read_b = this->fp->read(this->buf + this->head, max_read);
+            } else {
+                // read from head -> tail
+                max_read = this->tail - this->head;
+                read_b = this->fp->read(this->buf + this->head, max_read);
+            }
+            this->size += read_b;
+            this->head = (this->head + read_b) % READ_BUF_SZ;
+            if (read_b < max_read) {
+                // If we hit EOF, reset to starting pos & bail - we may not need data going forward
+                this->fp->seek(this->reset_pos);
+                return;
+            }
+        }
+    }
+
+    int read(uint8_t* dest, int sz) {
+        if (this->size < sz) {
+            this->fill();
+            if (this->size < sz) {
+                return -1;
+            }
+        }
+        for (int offset = 0; offset < sz; offset++, this->size--, this->tail = (this->tail + 1) % READ_BUF_SZ) {
+            dest[offset] = this->buf[this->tail];
+        }
+        return sz;
+    }
+
+    uint8_t readByte() {
+        uint8_t b;
+        this->read(&b, 1);
+        return b;
+    }
+};
+
 void render_qoif2(File *fp, int next_time) {
     QOIF2FileHeader fh;
     QOIF2BlockHeader1 bh1;
@@ -198,7 +254,7 @@ void render_qoif2(File *fp, int next_time) {
     int8_t dr, dg, db;
     uint8_t r, g, b, run;
     long blocks_start, block_start, frame_start, delay_ms;
-    bool file_ok = true;
+    bool file_ok = true, looped = false;
     uint32_t trailer_temp;
     uint16_t cache[64], cur_px, last_px = 0, buffer[2][READ_BUF_SZ], wbufpos = 0, rbufpos = 0;
     uint8_t wbuf = 0, rbuf = 0, tag, arg1, arg2;
@@ -231,16 +287,33 @@ void render_qoif2(File *fp, int next_time) {
     }
 
     blocks_start = fp->position();
+    fbuf read_buf(fp);
 
     // Serial.println("Reading blocks");
-    while (next_time > millis()) {
+    while (next_time > millis() || !looped) {
         wbuf = 0;
         rbuf = 0;
         wbufpos = 0;
         rbufpos = 0;
 
         // Serial.println("Read bh1");
-        fp->read((uint8_t*)&bh1, sizeof(bh1));
+        // fp->read((uint8_t*)&bh1, sizeof(bh1));
+        read_buf.read((uint8_t*)&bh1, sizeof(bh1));
+        if (bh1.flags == 0 && bh1.duration == 0 && bh1.datalen == 0) {
+            // bh1 is 7b, trailer is 8b ending in 0x01 - datalen should never be 0 so we should be in the trailer
+            if (read_buf.readByte() == 1) {
+                // if only 1 frame, break & delay, otherwise continue the loop
+                looped = true;
+                if (frame_count < 2)
+                    break;
+                continue;
+            } else {
+                // error condition
+                files.next_file(&prefs);
+                fp->close();
+                return;
+            }
+        }
 
         if (bh1.flags & QOIF2_F_START) {
             frame_start = millis();
@@ -249,14 +322,16 @@ void render_qoif2(File *fp, int next_time) {
 
         if (bh1.flags & QOIF2_F_BIG) {
             // Serial.println("Read bh2b");
-            fp->read((uint8_t*)&bh2b, sizeof(bh2b));
+            // fp->read((uint8_t*)&bh2b, sizeof(bh2b));
+            read_buf.read((uint8_t*)&bh2b, sizeof(bh2b));
             width = bh2b.width;
             height = bh2b.height;
             x = bh2b.x;
             y = bh2b.y;
         } else {
             // Serial.println("Read bh2");
-            fp->read((uint8_t*)&bh2, sizeof(bh2));
+            // fp->read((uint8_t*)&bh2, sizeof(bh2));
+            read_buf.read((uint8_t*)&bh2, sizeof(bh2));
             width = bh2.width;
             height = bh2.height;
             x = bh2.x;
@@ -269,20 +344,28 @@ void render_qoif2(File *fp, int next_time) {
         tft.setAddrWindow(x, y, width, height);
 
         // Serial.println("Read img data");
-        block_start = fp->position();
-        while (fp->position() - block_start < bh1.datalen) {
+        // block_start = fp->position();
+        // while (fp->position() - block_start < bh1.datalen) {
+        int read_b = 0;
+        while (read_b < bh1.datalen) {
             run = 1;
-            fp->read(&tag, 1);
+            // fp->read(&tag, 1);
+            read_b += read_buf.read(&tag, 1);
             switch (tag) {
                 case 0xff:
                     // RGBA - not supported
-                    fp->seek(fp->position() + 4);
+                    // fp->seek(fp->position() + 4);
+                    read_buf.readByte();
+                    read_buf.readByte();
+                    read_buf.readByte();
+                    read_buf.readByte();
                     continue;
                     break;
                 case 0xfe:
                     // RGB - already verified 16b
                     // Serial.println("tag: rgb");
-                    fp->read((uint8_t*)&cur_px, sizeof(cur_px));
+                    // fp->read((uint8_t*)&cur_px, sizeof(cur_px));
+                read_b += read_buf.read((uint8_t*)&cur_px, sizeof(cur_px));
                     break;
                 default:
                     arg1 = tag & 0b00111111;
@@ -310,7 +393,8 @@ void render_qoif2(File *fp, int next_time) {
                         case 2:
                             // luma
                             // Serial.println("tag: luma");
-                            fp->read((uint8_t*)&arg2, sizeof(arg2));
+                            // fp->read((uint8_t*)&arg2, sizeof(arg2));
+                        read_b += read_buf.read((uint8_t*)&arg2, sizeof(arg2));
                             cur_px = last_px;
                             dg = arg1 - 32;
                             dr = ((arg2 >> 4) - 8) + dg;
@@ -363,29 +447,30 @@ void render_qoif2(File *fp, int next_time) {
             tft.dmaWait();
             tft.endWrite();
             if (bh1.duration) {
+                read_buf.fill();
                 delay_ms = bh1.duration - (millis() - frame_start);
                 if (delay_ms > 0)
                     delay(delay_ms);
             }
         }
 
-        // TODO: should do this before delay, however need to break out of loop possibly but after delay
-        fp->read((uint8_t*)&trailer_temp, sizeof(trailer_temp));
-        if (trailer_temp == 0) {
-            fp->read((uint8_t*)&trailer_temp, sizeof(trailer_temp));
-            if (trailer_temp == 0x01000000) {
-                // reached eof, if multi frame, seek to start & rerun
-                if (frame_count > 1) {
-                    fp->seek(blocks_start);
-                } else {
-                    break;
-                }
-            } else {
-                fp->seek(fp->position() - sizeof(trailer_temp) * 2);
-            }
-        } else {
-            fp->seek(fp->position() - sizeof(trailer_temp));
-        }
+        // // TODO: should do this before delay, however need to break out of loop possibly but after delay
+        // fp->read((uint8_t*)&trailer_temp, sizeof(trailer_temp));
+        // if (trailer_temp == 0) {
+        //     fp->read((uint8_t*)&trailer_temp, sizeof(trailer_temp));
+        //     if (trailer_temp == 0x01000000) {
+        //         // reached eof, if multi frame, seek to start & rerun
+        //         if (frame_count > 1) {
+        //             fp->seek(blocks_start);
+        //         } else {
+        //             break;
+        //         }
+        //     } else {
+        //         fp->seek(fp->position() - sizeof(trailer_temp) * 2);
+        //     }
+        // } else {
+        //     fp->seek(fp->position() - sizeof(trailer_temp));
+        // }
     }
     Serial.println("End of loop");
 
