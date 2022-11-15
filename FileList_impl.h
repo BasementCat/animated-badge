@@ -137,9 +137,9 @@ class FileList {
             }
 
             filename_string.toUpperCase();
-            if (filename_string.endsWith(String(".SDA")) == true)
-                out = ANIM_FILE;
-            else if (filename_string.endsWith(String(".QOX")) == true)
+            // if (filename_string.endsWith(String(".SDA")) == true)
+            //     out = ANIM_FILE;
+            if (filename_string.endsWith(String(".QOX")) == true)
                 out = QOIF2_FILE;
             // else if (filename_string.endsWith(String(".GIF")) == true)
             //     out = GIF_FILE;

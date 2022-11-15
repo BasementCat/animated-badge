@@ -1,7 +1,7 @@
 #ifndef _CONSTANTS_H_
 #define _CONSTANTS_H_
 
-#define VERSION "1.0"
+#define VERSION "2.0"
 
 #define SERIAL_SPEED 115200
 
@@ -14,10 +14,14 @@
 
 #define SPEAKER A0
 
-#define TOUCH_YD A4
-#define TOUCH_YU A6
-#define TOUCH_XL A5
-#define TOUCH_XR A7
+#define TOUCH_YD A4 // or YP
+#define TOUCH_YU A6 // or YM
+#define TOUCH_XL A5 // or XP
+#define TOUCH_XR A7 // or XM
+#define X_MIN  170
+#define X_MAX  870
+#define Y_MIN  920
+#define Y_MAX  130
 
 #define TFT_RESET 24 // D24
 #define TFT_D0 34
