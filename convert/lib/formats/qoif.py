@@ -334,6 +334,11 @@ class QOIF2Writer(QOIF2Base, ImageFormatWriter):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.bpp = self.args.bpp
+        self.exclude_tags = []
+        if self.args.format_args:
+            for k, v in self.args.format_args:
+                if k == 'notags':
+                    self.exclude_tags = v.split(',')
         self.setup()
 
     def __iter__(self):
@@ -385,28 +390,31 @@ class QOIF2Writer(QOIF2Base, ImageFormatWriter):
         return (diff_g, diff_r, diff_b)
 
     def _get_op(self, px):
-        idx = self._get_cache(px)
-        if idx is not False:
-            return struct.pack('<B', idx)
+        if 'index' not in self.exclude_tags:
+            idx = self._get_cache(px)
+            if idx is not False:
+                return struct.pack('<B', idx)
 
-        chan_diff = self._calc_op_diff(px)
-        if chan_diff is not False:
-            return struct.pack(
-                '<B',
-                0b01000000
-                | ((chan_diff[0] + 2) << 4)
-                | ((chan_diff[1] + 2) << 2)
-                | (chan_diff[2] + 2)
-            )
+        if 'diff' not in self.exclude_tags:
+            chan_diff = self._calc_op_diff(px)
+            if chan_diff is not False:
+                return struct.pack(
+                    '<B',
+                    0b01000000
+                    | ((chan_diff[0] + 2) << 4)
+                    | ((chan_diff[1] + 2) << 2)
+                    | (chan_diff[2] + 2)
+                )
 
-        luma_diff = self._calc_op_luma(px)
-        if luma_diff is not False:
-            return struct.pack(
-                '<BB',
-                0b10000000 | (luma_diff[0] + 32),
-                ((luma_diff[1] + 8) << 4)
-                | (luma_diff[2] + 8)
-            )
+        if 'luma' not in self.exclude_tags:
+            luma_diff = self._calc_op_luma(px)
+            if luma_diff is not False:
+                return struct.pack(
+                    '<BB',
+                    0b10000000 | (luma_diff[0] + 32),
+                    ((luma_diff[1] + 8) << 4)
+                    | (luma_diff[2] + 8)
+                )
 
         if self.args.bpp == 32:
             return struct.pack(
@@ -429,6 +437,10 @@ class QOIF2Writer(QOIF2Base, ImageFormatWriter):
 
     def process_frame_data(self, frame, x=None, y=None, w=None, h=None):
         for rle_len, pixels in frame.get_pixels_rle(63, x, y, w, h, only_chunk_rle=True):
+            if rle_len > 1 and 'run' in self.exclude_tags:
+                pixels = [pixels[0] for _ in range(rle_len)]
+                rle_len = 1
+
             if rle_len > 1:
                 px = pixels[0]
                 if self.args.bpp < 24:

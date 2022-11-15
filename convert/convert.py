@@ -39,7 +39,7 @@ def parse_args():
             if v.lower() in ('common', 'edge'):
                 return v.lower()
             else:
-                if v.lower.startswith('0x'):
+                if v.lower().startswith('0x'):
                     v = v[2:]
                 elif v.startswith('#'):
                     v = v[1:]
@@ -64,6 +64,7 @@ def parse_args():
     parser.add_argument('-T', '--no-thumbnail', action='store_false', dest='do_thumbnail', help="Don't generate thumbnails")
     parser.add_argument('-B', '--background-color', default='000000', type=_parse_color, help="Background color - a 24 bit hex color (6 digits, optionally starting with '0x' or '#'), or 'common' to use the most common color in the image, or 'edge' to use the most common edge color in the image")
     parser.add_argument('-f', '--filenames', nargs='*', help="Image/GIF filenames to extract")
+    parser.add_argument('-F', '--format-args', nargs=2, action='append', help="Additional key/value arguments per format, probably for debugging")
     args = parser.parse_args()
 
     if args.custom_size:

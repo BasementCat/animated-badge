@@ -155,6 +155,9 @@ class ImageParser:
                 px = fr.getpixel((x, y))
                 pxset.setdefault(px, 0)
                 pxset[px] += 1
+        elif isinstance(self.args.background_color, tuple) and len(self.args.background_color) == 3:
+            self.bgcolor = self.args.background_color
+            return
         else:
             raise ValueError("Bad bgcolor")
 
