@@ -63,160 +63,174 @@ void setup() {
 }
 
 
+bool paused = false, locked = false;
+
+
+bool handle_main_touch(File* fp) {
+    switch (get_main_screen_touch(&touchscreen)) {
+        case MAIN_BTN_LOCK:
+            locked = !locked;
+            break;
+        case MAIN_BTN_LEFT:
+            if (locked) break;
+            if (fp != NULL) fp->close();
+            files.prev_file(&prefs);
+            return true;
+        case MAIN_BTN_RIGHT:
+            if (locked) break;
+            if (fp != NULL) fp->close();
+            files.next_file(&prefs);
+            return true;
+        case MAIN_BTN_PAUSE:
+            if (locked) break;
+            paused = !paused;
+            break;
+        case MAIN_BTN_MENU:
+            if (locked) break;
+            // TODO: implement a menu
+            break;
+    }
+    return false;
+}
+
+
 void loop() {
 	// TODO: zero screen in between images
     File fp;
     int call_res;
     long next_time, delay_until;
-    bool one_frame = false, anim_completed = false, in_delay = false;
-    static bool paused = false, locked = false;
+    bool one_frame = false, anim_completed = false, in_delay = false, died = false;
 
     // next_time = millis() + (prefs.display_time_s * 1000);
     next_time = millis() + 4000;
 
     Serial.println("Open file");
     fp = SD.open(files.get_cur_file());
+    delay(1000);
     if (!fp) {
-        Serial.println("Can't open file, moving to next");
-        Serial.flush();
-        files.next_file(&prefs);
-        return;
-    }
-
-    if (files.is_qoif2) {
-        QOIF2 img(&tft, &fp);
-        int res = img.open();
-        switch (res) {
-            case 0:
-                goto QOIF2_OPEN_OK;
-                break;
-            case QOIF2_E_MAGIC:
-                Serial.println("Opening QOIF2, bad magic");
-                break;
-            case QOIF2_E_DIMENSIONS:
-                Serial.println("Opening QOIF2, bad dimensions");
-                break;
-            case QOIF2_E_CHANNELS:
-                Serial.println("Opening QOIF2, bad channels");
-                break;
-            case QOIF2_E_VERSION:
-                Serial.println("Opening QOIF2, bad version");
-                break;
-            default:
-                Serial.println("Opening QOIF2, unknown error");
-                break;
-        }
-
-        fp.close();
-        files.next_file(&prefs);
-        return;
-
-        QOIF2_OPEN_OK:
-
-        while (true) {
-            in_delay = false;
-            if (!one_frame) {
-                res = img.read_and_render_block();
+        die("Can't open file", files.get_cur_file());
+        died = true;
+    } else {
+        if (files.is_qoif2) {
+            QOIF2 img(&tft, &fp);
+            int res = img.open();
+            if (res != 0) {
                 switch (res) {
-                    case QOIF2_E_TRAILER:
-                        Serial.println("QOIF2: in trailer?");
-                        fp.close();
-                        files.next_file(&prefs);
-                        return;
+                    case QOIF2_E_MAGIC:
+                        die("Opening QOIF2, bad magic", files.get_cur_file());
                         break;
-                    case QOIF2_B_ONE_FRAME:
-                        one_frame = true;
+                    case QOIF2_E_DIMENSIONS:
+                        die("Opening QOIF2, bad dimensions", files.get_cur_file());
                         break;
-                    case QOIF2_B_END:
-                        anim_completed = true;
+                    case QOIF2_E_CHANNELS:
+                        die("Opening QOIF2, bad channels", files.get_cur_file());
                         break;
-                    case QOIF2_B_DELAY:
-                        in_delay = true;
-                        break;
-                    case QOIF2_B_CONTINUE:
+                    case QOIF2_E_VERSION:
+                        die("Opening QOIF2, bad version", files.get_cur_file());
                         break;
                     default:
-                        Serial.println("QOIF2: unknown error in block");
-                        fp.close();
-                        files.next_file(&prefs);
-                        return;
+                        die("Opening QOIF2, unknown error", files.get_cur_file());
                         break;
                 }
-            }
+                died = true;
+            } else {
+                while (true) {
+                    in_delay = false;
+                    if (!one_frame) {
+                        res = img.read_and_render_block();
+                        switch (res) {
+                            case QOIF2_E_TRAILER:
+                                die("QOIF2: in trailer?", files.get_cur_file());
+                                died = true;
+                                goto FILE_DONE;
+                                break;
+                            case QOIF2_B_ONE_FRAME:
+                                one_frame = true;
+                                break;
+                            case QOIF2_B_END:
+                                anim_completed = true;
+                                break;
+                            case QOIF2_B_DELAY:
+                                in_delay = true;
+                                break;
+                            case QOIF2_B_CONTINUE:
+                                break;
+                            default:
+                                die("QOIF2: unknown error in block", files.get_cur_file());
+                                died = true;
+                                goto FILE_DONE;
+                                break;
+                        }
+                    }
 
-            if (!paused && anim_completed && millis() >= next_time) {
-                break;
-            }
-
-            delay_until = millis();
-            if (in_delay) {
-                if (img.delay_ms > 0)
-                    delay_until += img.delay_ms;
-
-                if (img.delay_diff >= 0.95)
-                    set_status_led(STATUS_LED_GOOD);
-                else if (img.delay_diff >- 0.85)
-                    set_status_led(STATUS_LED_OK);
-                else if (img.delay_diff >= 0.75)
-                    set_status_led(STATUS_LED_POOR);
-                else
-                    set_status_led(STATUS_LED_BAD);
-            }
-
-            do {
-                switch (get_main_screen_touch(&touchscreen)) {
-                    case MAIN_BTN_LOCK:
-                        locked = !locked;
+                    if (!paused && anim_completed && millis() >= next_time) {
                         break;
-                    case MAIN_BTN_LEFT:
-                        if (locked) break;
-                        fp.close();
-                        files.prev_file(&prefs);
-                        return;
-                    case MAIN_BTN_RIGHT:
-                        if (locked) break;
-                        fp.close();
-                        files.next_file(&prefs);
-                        return;
-                    case MAIN_BTN_PAUSE:
-                        if (locked) break;
-                        paused = !paused;
-                        break;
-                    case MAIN_BTN_MENU:
-                        if (locked) break;
-                        // TODO: implement a menu
-                        break;
+                    }
+
+                    delay_until = millis();
+                    if (in_delay) {
+                        if (img.delay_ms > 0)
+                            delay_until += img.delay_ms;
+
+                        if (img.delay_diff >= 0.95)
+                            set_status_led(STATUS_LED_GOOD);
+                        else if (img.delay_diff >- 0.85)
+                            set_status_led(STATUS_LED_OK);
+                        else if (img.delay_diff >= 0.75)
+                            set_status_led(STATUS_LED_POOR);
+                        else
+                            set_status_led(STATUS_LED_BAD);
+                    }
+
+                    do {
+                        if (handle_main_touch(&fp)) return;
+                    } while (millis() < delay_until);
                 }
-            } while (millis() < delay_until);
+            }
+        } else {
+            die("Bad file type", files.get_cur_file());
+            died = true;
         }
-
-        files.next_file(&prefs);
-    } else {
-        Serial.println("Bad file type");
-        fp.close();
-        files.next_file(&prefs);
     }
+
+    FILE_DONE:
+
+    if (fp) fp.close();
+    if (died) {
+        next_time = millis() + 4000;
+        do {
+            if (handle_main_touch(NULL)) return;
+        } while (millis() < next_time);
+    }
+    files.next_file(&prefs);
 }
 
 
 void die(const char *message) {
-    die(message, false);
+    die(message, true);
 }
 
 
-void die(const char *message, bool dont_die) {
+void die(const char *message, const char *filename) {
+    char str[512];
+    snprintf(str, sizeof(str), "%s\n\nFilename: %s", message, filename);
+    die(str, false);
+}
+
+
+void die(const char *message, bool do_die) {
     tft.fillScreen(COLOR_BLACK);
 
     tft.setTextWrap(true);
 
     tft.setCursor(10, 15);
-    tft.setTextColor(tft.color565(255, 0, 0));
+    tft.setTextColor(COLOR_RED);
     tft.setTextSize(3);
     tft.println("ERROR");
 
     tft.setCursor(0, 50);
-    tft.setTextColor(0xffff);
-    tft.setTextSize(1);
+    tft.setTextColor(COLOR_WHITE);
+    tft.setTextSize(2);
     tft.println(message);
-    while (!dont_die) delay(1000);
+    while (do_die) delay(1000);
 }
