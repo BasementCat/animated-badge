@@ -227,7 +227,8 @@ public:
                     }
             }
 
-            if (this->rbufpos + this->run > QOIF2_READ_BUF_SZ) {
+            if (this->run > 1 || this->rbufpos + this->run > QOIF2_READ_BUF_SZ) {
+                // Dump the buffer to the screen if there's a run of pixels, or it's full
                 // Serial.println("Write to screen - buffer full");
                 this->tft->dmaWait();
                 this->wbuf = this->rbuf;
@@ -236,10 +237,14 @@ public:
                 this->rbuf = this->rbuf ? 0 : 1;
                 this->rbufpos = 0;
             }
-            for (int i = 0; i < this->run; i++) {
-                this->buffer[this->rbuf][i + this->rbufpos] = this->cur_px;
+            if (this->run > 1) {
+                // write the run of pixels
+                this->tft->dmaWait();
+                tft->writeColor(this->cur_px, this->run);
+            } else {
+                // otherwise, put the pixel into the buffer
+                this->buffer[this->rbuf][this->rbufpos++] = this->cur_px;
             }
-            this->rbufpos += this->run;
             this->last_px = this->cur_px;
             this->cache[(this->cur_px * 6311) % 64] = this->cur_px;
         }
