@@ -6,6 +6,7 @@
 
 #include "colors.h"
 #include "prefs.h"
+#include "backlight_impl.h"
 
 
 #define BUTTON_H_MARGIN 6
@@ -299,13 +300,61 @@ void backlight_menu(Prefs* prefs, Adafruit_ILI9341* tft, TouchScreen* ts) {
             bri_auto_max_up.render();
         }
         if (back.check()) {
-            prefs->brightness = ((float)brightness / 100) * 255;
-            prefs->bri_auto_min = ((float)bri_auto_min / 100) * 255;
-            prefs->bri_auto_max = ((float)bri_auto_max / 100) * 255;
-            set_pref_flag(prefs, PREFS_FLAG_BL_AUTO, bri_auto);
             write_prefs(prefs);
             return;
         }
+
+        prefs->brightness = ((float)brightness / 100) * 255;
+        prefs->bri_auto_min = ((float)bri_auto_min / 100) * 255;
+        prefs->bri_auto_max = ((float)bri_auto_max / 100) * 255;
+        set_pref_flag(prefs, PREFS_FLAG_BL_AUTO, bri_auto);
+        update_backlight(prefs, true);
+    }
+}
+
+void display_menu(Prefs* prefs, Adafruit_ILI9341* tft, TouchScreen* ts) {
+    display_menu_top:
+    uint16_t top = _render_menu_base(tft, "Display");
+
+    char display_time_s[4];
+    itoa(prefs->display_time_s, display_time_s, 10);
+
+    Label disp_time_lbl(tft, "Image Display Time - Seconds", 1, top + CONTROL_V_MARGIN, 0, 1);
+    top = disp_time_lbl.render();
+
+    Button disp_time_down(tft, ts, "-10", top + CONTROL_V_MARGIN, 0, .3);
+    disp_time_down.render();
+
+    Label disp_time_val(tft, display_time_s, 2, top + CONTROL_V_MARGIN, .33, .3);
+    disp_time_val.render();
+
+    Button disp_time_up(tft, ts, "+10", top + CONTROL_V_MARGIN, .66, .3);
+    top = disp_time_up.render();
+
+    Button back(tft, ts, "< Back", top + CONTROL_V_MARGIN, 0, 1);
+    top = back.render();
+
+    while (true) {
+        if (disp_time_down.check()) {
+            if (prefs->display_time_s > 1)
+                prefs->display_time_s -= 1;
+            itoa(prefs->display_time_s, display_time_s, 10);
+            disp_time_val.set_text(display_time_s);
+            disp_time_down.render();
+        }
+        if (disp_time_up.check()) {
+            if (prefs->display_time_s < 999)
+                prefs->display_time_s += 1;
+            itoa(prefs->display_time_s, display_time_s, 10);
+            disp_time_val.set_text(display_time_s);
+            disp_time_up.render();
+        }
+        if (back.check()) {
+            write_prefs(prefs);
+            return;
+        }
+
+        update_backlight(prefs);
     }
 }
 
@@ -325,13 +374,13 @@ void main_menu(Prefs* prefs, Adafruit_ILI9341* tft, TouchScreen* ts) {
             goto main_menu_top;
         }
         if (display.check()) {
-            // TODO: call disp menu
-            tft->fillScreen(COLOR_RED);
+            display_menu(prefs, tft, ts);
             goto main_menu_top;
         }
         if (back.check()) {
             return;
         }
+        update_backlight(prefs);
     }
 }
 

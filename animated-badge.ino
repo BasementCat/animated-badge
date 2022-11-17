@@ -15,6 +15,7 @@
 #include "FileBuffer_impl.h"
 #include "status_led_impl.h"
 #include "main_touch_impl.h"
+#include "backlight_impl.h"
 #include "Menus_impl.h"
 
 
@@ -59,8 +60,7 @@ void setup() {
 
     status_led_init();
 
-    // TODO: set backlight
-    // ledcWrite(TFT_BL_CHAN, prefs.brightness);
+    update_backlight(&prefs);
 }
 
 
@@ -88,26 +88,24 @@ bool handle_main_touch(File* fp) {
             break;
         case MAIN_BTN_MENU:
             if (locked) break;
-            // TODO: implement a menu
-            break;
+            main_menu(&prefs, &tft, &touchscreen);
+            return true;
     }
     return false;
 }
 
 
 void loop() {
-	// TODO: zero screen in between images
+    // TODO: zero screen in between images
     File fp;
     int call_res;
     long next_time, delay_until;
     bool one_frame = false, anim_completed = false, in_delay = false, died = false;
 
-    // next_time = millis() + (prefs.display_time_s * 1000);
-    next_time = millis() + 4000;
+    next_time = millis() + (prefs.display_time_s * 1000);
 
     Serial.println("Open file");
     fp = SD.open(files.get_cur_file());
-    delay(1000);
     if (!fp) {
         die("Can't open file", files.get_cur_file());
         died = true;
@@ -185,6 +183,7 @@ void loop() {
 
                     do {
                         if (handle_main_touch(&fp)) return;
+                        update_backlight(&prefs);
                     } while (millis() < delay_until);
                 }
             }
@@ -204,6 +203,7 @@ void loop() {
         } while (millis() < next_time);
     }
     files.next_file(&prefs);
+    update_backlight(&prefs);
 }
 
 
