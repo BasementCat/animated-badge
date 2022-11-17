@@ -299,6 +299,11 @@ void backlight_menu(Prefs* prefs, Adafruit_ILI9341* tft, TouchScreen* ts) {
             bri_auto_max_up.render();
         }
         if (back.check()) {
+            prefs->brightness = ((float)brightness / 100) * 255;
+            prefs->bri_auto_min = ((float)bri_auto_min / 100) * 255;
+            prefs->bri_auto_max = ((float)bri_auto_max / 100) * 255;
+            set_pref_flag(prefs, PREFS_FLAG_BL_AUTO, bri_auto);
+            write_prefs(prefs);
             return;
         }
     }
