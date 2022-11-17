@@ -45,9 +45,9 @@ void setup() {
 
     Serial.print("Initializing SD card...");
     if (!SD.begin(SD_CS)) {
-        Serial.println("failed!");
-        tft.fillScreen(COLOR_RED);
-        // die("Failed to initialize SD card", false);
+        // Serial.println("failed!");
+        // tft.fillScreen(COLOR_RED);
+        die("Failed to initialize SD card", false);
         delay(1000);
         goto start_sd;
     }

@@ -16,8 +16,8 @@ uint8_t get_main_screen_touch(TouchScreen* touchscreen) {
     TSPoint p = touchscreen->getPoint();
 
     if (p.z > touchscreen->pressureThreshhold) {
-        int16_t x = map(p.x, X_MIN, X_MAX, 0, 240);
-        int16_t y = map(p.y, Y_MIN, Y_MAX, 0, 320);
+        int16_t x = map(p.x, X_MIN, X_MAX, 0, SCREEN_WIDTH);
+        int16_t y = map(p.y, Y_MIN, Y_MAX, 0, SCREEN_HEIGHT);
         uint8_t new_button;
         if (y < 64) {
             new_button = MAIN_BTN_LOCK;
