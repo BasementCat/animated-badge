@@ -32,6 +32,9 @@ void read_prefs(Prefs* prefs) {
     prefs->display_time_s = 10;
     prefs->last_filename[0] = 0;
     prefs->brightness = 255;
+    prefs->flags = 0;
+    prefs->bri_auto_min = 25;
+    prefs->bri_auto_max = 255;
 
     file = SD.open(PREFS_FILENAME);
     if (!file) {
@@ -55,4 +58,16 @@ void read_prefs(Prefs* prefs) {
     else if (version == 2)
         file.read((uint8_t*)prefs, 133);
     file.close();
+}
+
+void set_pref_flag(Prefs* prefs, int flag, bool value) {
+    if (value) {
+        prefs->flags |= (1 << flag);
+    } else {
+        prefs->flags &= ~(1 << flag);
+    }
+}
+
+bool read_pref_flag(Prefs* prefs, int flag) {
+    return prefs->flags & (1 << flag);
 }

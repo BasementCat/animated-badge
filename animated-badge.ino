@@ -15,6 +15,7 @@
 #include "FileBuffer_impl.h"
 #include "status_led_impl.h"
 #include "main_touch_impl.h"
+#include "Menus_impl.h"
 
 
 Adafruit_ILI9341 tft(tft8bitbus, TFT_D0, TFT_WR, TFT_DC, TFT_CS, TFT_RESET, TFT_RD);
